@@ -66,6 +66,11 @@ export interface Config {
 	stripeSecretKey: string | null;
 	stripeWebhookSecret: string | null;
 	stripePriceFyndbotPro: string | null;
+	stripeTestSecretKey: string | null;
+	stripeTestWebhookSecret: string | null;
+	stripeTestPriceFyndbotPro: string | null;
+	stripeSandboxTelegramIds: number[];
+	stripeSandboxUsernames: string[];
 	publicBaseUrl: string;
 	pollIntervalMinutes: number;
 	freeInspectWeeklyLimit: number;

@@ -126,6 +126,8 @@ Quick summary:
 3. Set environment variables: `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `STRIPE_PRICE_FYNDBOT_PRO`
 4. Configure nginx proxy to forward webhook requests to port 3847
 
+**Stripe Test Mode:** For testing, configure `STRIPE_TEST_SECRET_KEY`, `STRIPE_TEST_WEBHOOK_SECRET`, and `STRIPE_TEST_PRICE_FYNDBOT_PRO`. Add test users to allowlist via `STRIPE_SANDBOX_TELEGRAM_IDS` and `STRIPE_SANDBOX_USERNAMES` (comma-separated). Allowlisted users get test checkout with test cards (4242 4242 4242 4242).
+
 ### OpenRouter / LLM Configuration (AI Scoring)
 
 Fyndbot uses OpenRouter for AI-powered bargain scoring. See detailed setup guide:
@@ -137,7 +139,7 @@ Quick summary:
 2. Add credits ($5-10 for testing)
 3. Get API key
 4. Set environment variables: `LLM_API_KEY`, `LLM_API_URL`, `LLM_MODEL`
-5. Recommended model: `openai/gpt-4o-mini` (~$0.00004 per scoring)
+5. Default model: `openai/gpt-4.1-mini` (~$0.0001 per scoring, calibrated for quality)
 
 **Without LLM:** Bot falls back to deterministic heuristic scoring (no API key needed).
 

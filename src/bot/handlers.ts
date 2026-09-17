@@ -359,6 +359,7 @@ Free tier: 3 inspections per week`,
 	bot.onText(/\/pro/, async (msg) => {
 		const chatId = msg.chat.id;
 		const telegramId = msg.from!.id;
+		const username = msg.from!.username || null;
 
 		const user = db.getUserByTelegramId(telegramId);
 
@@ -388,29 +389,38 @@ Free tier: 3 inspections per week`,
 					return;
 				}
 
-				const checkoutUrl = await createCheckoutSession(telegramId);
+				const checkout = await createCheckoutSession(telegramId, username);
 
-				await bot.sendMessage(chatId,
-					`*Fyndbot Pro* ✨\n\n` +
+				let message = `*Fyndbot Pro* ✨\n\n` +
 					`*Benefits:*\n` +
 					`• AI bargain score (1-10) on every alert\n` +
 					`• Unlimited /inspect commands\n` +
 					`• Vehicle besiktning/tax data\n` +
 					`• Priority support\n\n` +
-					`*Price:* ${config.priceProMonthly} SEK/month\n\n` +
-					`Click below to subscribe:`,
+					`*Price:* ${config.priceProMonthly} SEK/month\n\n`;
+
+				if (checkout.isTest) {
+					message += `🧪 *TEST MODE*: This is a sandbox checkout.\n` +
+						`Use test card: \`4242 4242 4242 4242\`\n` +
+						`Any expiry/CVC. No real charges.\n\n`;
+				}
+
+				message += `Click below to subscribe:`;
+
+				await bot.sendMessage(chatId, message,
 					{ 
 						parse_mode: 'Markdown',
 						reply_markup: {
 							inline_keyboard: [[
-								{ text: '💳 Subscribe to Pro', url: checkoutUrl }
+								{ text: checkout.isTest ? '🧪 Test Checkout' : '💳 Subscribe to Pro', url: checkout.url }
 							]]
 						}
 					}
 				);
 			} catch (error) {
 				console.error('Error creating checkout session:', error);
-				await bot.sendMessage(chatId, '❌ Error creating checkout session. Please try again later.');
+				const errorMsg = error instanceof Error ? error.message : 'Unknown error';
+				await bot.sendMessage(chatId, `❌ Error creating checkout session: ${errorMsg}`);
 			}
 		}
 	});

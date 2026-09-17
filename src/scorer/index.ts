@@ -15,7 +15,7 @@ export async function scoreListing(listing: BlocketListing): Promise<BargainScor
 }
 
 async function scoreWithLLM(listing: BlocketListing): Promise<BargainScore> {
-	const prompt = `You are a Swedish bargain-hunting expert. Rate this Blocket listing from 1-10 (10=amazing deal, 1=overpriced).
+	const prompt = `You are a sharp Swedish Blocket deal analyst. Rate this listing 1-10 (10=amazing deal, 1=overpriced). Be calibrated: most listings 4-6; reserve 8+ for clear underpricing or rare urgency; 9-10 rare.
 
 Title: ${listing.title}
 Price: ${listing.price ? listing.price + ' ' + listing.currency : 'Not specified'}
@@ -23,12 +23,10 @@ Category: ${listing.category || 'Unknown'}
 Location: ${listing.location || 'Unknown'}
 Description: ${listing.description || 'No description'}
 
-Respond with JSON only:
-{
-  "score": <number 1-10>,
-  "reason": "<one line explanation in English>",
-  "confidence": <0.0-1.0>
-}`;
+Return JSON with:
+- score: 1-10 number (one decimal ok)
+- reason: ONE punchy sentence in English citing concrete signals (price vs category, condition words like "ny"/"oöppnad", urgency like "snabbt"/"prutbar", location, photo presence) — no fluff
+- confidence: 0.0-1.0`;
 
 	const headers: Record<string, string> = {
 		'Content-Type': 'application/json',
@@ -40,22 +38,28 @@ Respond with JSON only:
 		headers['X-Title'] = 'Fyndbot';
 	}
 
+	const requestBody: any = {
+		model: config.llmModel,
+		messages: [
+			{ role: 'user', content: prompt },
+		],
+		temperature: 0.3,
+		max_tokens: 120,
+	};
+
+	if (!config.llmApiUrl?.includes('openrouter.ai')) {
+		requestBody.response_format = { type: 'json_object' };
+	}
+
 	const response = await fetch(`${config.llmApiUrl}/chat/completions`, {
 		method: 'POST',
 		headers,
-		body: JSON.stringify({
-			model: config.llmModel,
-			messages: [
-				{ role: 'system', content: 'You are a helpful assistant that responds only with valid JSON.' },
-				{ role: 'user', content: prompt },
-			],
-			temperature: 0.7,
-			max_tokens: 150,
-		}),
+		body: JSON.stringify(requestBody),
 	});
 
 	if (!response.ok) {
-		throw new Error(`LLM API failed: ${response.status}`);
+		const errorText = await response.text();
+		throw new Error(`LLM API failed: ${response.status} - ${errorText}`);
 	}
 
 	const data = await response.json() as any;
@@ -65,11 +69,21 @@ Respond with JSON only:
 		throw new Error('No content in LLM response');
 	}
 
-	const parsed = JSON.parse(content.trim());
+	let parsed: any;
+	try {
+		parsed = JSON.parse(content.trim());
+	} catch (err) {
+		const jsonMatch = content.match(/\{[\s\S]*\}/);
+		if (jsonMatch) {
+			parsed = JSON.parse(jsonMatch[0]);
+		} else {
+			throw new Error(`Failed to parse LLM response as JSON: ${content}`);
+		}
+	}
 	
 	return {
-		score: Math.max(1, Math.min(10, parsed.score)),
-		reason: parsed.reason || 'No reason provided',
+		score: Math.max(1, Math.min(10, Math.round((parsed.score || 5) * 10) / 10)),
+		reason: (parsed.reason || 'No reason provided').trim(),
 		confidence: Math.max(0, Math.min(1, parsed.confidence || 0.5)),
 	};
 }
