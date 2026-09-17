@@ -112,6 +112,35 @@ src/
   types/                TypeScript definitions
 ```
 
+## Pro Tier Setup
+
+### Stripe Configuration (Real Payments)
+
+Fyndbot Pro uses Stripe for secure subscription payments. See detailed setup guide:
+
+**📖 [STRIPE_SETUP.md](STRIPE_SETUP.md)**
+
+Quick summary:
+1. Create Stripe Price (79 SEK/month recurring)
+2. Configure webhook endpoint at `https://fynd.vome.io/api/stripe/webhook`
+3. Set environment variables: `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `STRIPE_PRICE_FYNDBOT_PRO`
+4. Configure nginx proxy to forward webhook requests to port 3847
+
+### OpenRouter / LLM Configuration (AI Scoring)
+
+Fyndbot uses OpenRouter for AI-powered bargain scoring. See detailed setup guide:
+
+**📖 [OPENROUTER_SETUP.md](OPENROUTER_SETUP.md)**
+
+Quick summary:
+1. Create account at [openrouter.ai](https://openrouter.ai)
+2. Add credits ($5-10 for testing)
+3. Get API key
+4. Set environment variables: `LLM_API_KEY`, `LLM_API_URL`, `LLM_MODEL`
+5. Recommended model: `openai/gpt-4o-mini` (~$0.00004 per scoring)
+
+**Without LLM:** Bot falls back to deterministic heuristic scoring (no API key needed).
+
 ## Testing
 
 ```bash

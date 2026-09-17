@@ -62,8 +62,11 @@ export interface Config {
 	databaseUrl: string;
 	llmApiKey: string | null;
 	llmApiUrl: string | null;
+	llmModel: string;
 	stripeSecretKey: string | null;
 	stripeWebhookSecret: string | null;
+	stripePriceFyndbotPro: string | null;
+	publicBaseUrl: string;
 	pollIntervalMinutes: number;
 	freeInspectWeeklyLimit: number;
 	priceFree: number;

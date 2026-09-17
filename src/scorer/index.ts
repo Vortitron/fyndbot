@@ -30,14 +30,21 @@ Respond with JSON only:
   "confidence": <0.0-1.0>
 }`;
 
+	const headers: Record<string, string> = {
+		'Content-Type': 'application/json',
+		'Authorization': `Bearer ${config.llmApiKey}`,
+	};
+
+	if (config.llmApiUrl?.includes('openrouter.ai')) {
+		headers['HTTP-Referer'] = 'https://fynd.vome.io';
+		headers['X-Title'] = 'Fyndbot';
+	}
+
 	const response = await fetch(`${config.llmApiUrl}/chat/completions`, {
 		method: 'POST',
-		headers: {
-			'Content-Type': 'application/json',
-			'Authorization': `Bearer ${config.llmApiKey}`,
-		},
+		headers,
 		body: JSON.stringify({
-			model: 'gpt-3.5-turbo',
+			model: config.llmModel,
 			messages: [
 				{ role: 'system', content: 'You are a helpful assistant that responds only with valid JSON.' },
 				{ role: 'user', content: prompt },

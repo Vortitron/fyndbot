@@ -24,6 +24,8 @@ function createTables(): void {
 			telegram_id INTEGER UNIQUE NOT NULL,
 			username TEXT,
 			is_pro INTEGER DEFAULT 0,
+			stripe_customer_id TEXT,
+			stripe_subscription_id TEXT,
 			inspect_count INTEGER DEFAULT 0,
 			inspect_reset_at INTEGER NOT NULL,
 			created_at INTEGER NOT NULL
@@ -71,6 +73,7 @@ function createTables(): void {
 		);
 
 		CREATE INDEX IF NOT EXISTS idx_users_telegram_id ON users(telegram_id);
+		CREATE INDEX IF NOT EXISTS idx_users_stripe_customer ON users(stripe_customer_id);
 		CREATE INDEX IF NOT EXISTS idx_watches_user_id ON watches(user_id);
 		CREATE INDEX IF NOT EXISTS idx_watches_active ON watches(active);
 		CREATE INDEX IF NOT EXISTS idx_follows_user_id ON follows(user_id);
@@ -272,6 +275,57 @@ export function markFollowListingSeen(followId: number, listingId: string): void
 
 export function markFollowListingDisappeared(followId: number, listingId: string): void {
 	db.prepare('UPDATE follow_listings SET disappeared_at = ? WHERE follow_id = ? AND listing_id = ? AND disappeared_at IS NULL').run(Date.now(), followId, listingId);
+}
+
+export function setUserPro(telegramId: number, isPro: boolean, stripeCustomerId?: string, stripeSubscriptionId?: string): void {
+	const updates: string[] = ['is_pro = ?'];
+	const values: any[] = [isPro ? 1 : 0];
+
+	if (stripeCustomerId !== undefined) {
+		updates.push('stripe_customer_id = ?');
+		values.push(stripeCustomerId);
+	}
+
+	if (stripeSubscriptionId !== undefined) {
+		updates.push('stripe_subscription_id = ?');
+		values.push(stripeSubscriptionId);
+	}
+
+	values.push(telegramId);
+
+	db.prepare(`UPDATE users SET ${updates.join(', ')} WHERE telegram_id = ?`).run(...values);
+}
+
+export function getUserByStripeCustomerId(customerId: string): User | null {
+	const row = db.prepare('SELECT * FROM users WHERE stripe_customer_id = ?').get(customerId) as any;
+	
+	if (!row) return null;
+
+	return {
+		id: row.id,
+		telegramId: row.telegram_id,
+		username: row.username,
+		isPro: row.is_pro === 1,
+		inspectCount: row.inspect_count,
+		inspectResetAt: new Date(row.inspect_reset_at),
+		createdAt: new Date(row.created_at),
+	};
+}
+
+export function getUserByStripeSubscriptionId(subscriptionId: string): User | null {
+	const row = db.prepare('SELECT * FROM users WHERE stripe_subscription_id = ?').get(subscriptionId) as any;
+	
+	if (!row) return null;
+
+	return {
+		id: row.id,
+		telegramId: row.telegram_id,
+		username: row.username,
+		isPro: row.is_pro === 1,
+		inspectCount: row.inspect_count,
+		inspectResetAt: new Date(row.inspect_reset_at),
+		createdAt: new Date(row.created_at),
+	};
 }
 
 export function closeDatabase(): void {

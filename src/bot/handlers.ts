@@ -4,6 +4,7 @@ import * as db from '../database/index.js';
 import { fetchBlocketSearch, fetchBlocketAd, extractRegistrationNumber, extractSellerFromUrl } from '../blocket/fetcher.js';
 import { scoreListing } from '../scorer/index.js';
 import { enrichVehicleData } from '../enrichment/transportstyrelsen.js';
+import { createCheckoutSession } from '../stripe/index.js';
 import type { BlocketListing } from '../types/index.js';
 
 export function createBot(): TelegramBot {
@@ -371,17 +372,46 @@ Free tier: 3 inspections per week`,
 				`✨ You're a Pro subscriber!\n\n• AI bargain scores on alerts\n• Unlimited inspections\n• Vehicle data enrichment\n\nThank you for your support!`
 			);
 		} else {
-			await bot.sendMessage(chatId,
-				`*Fyndbot Pro* ✨\n\n` +
-				`*Benefits:*\n` +
-				`• AI bargain score (1-10) on every alert\n` +
-				`• Unlimited /inspect commands\n` +
-				`• Vehicle besiktning/tax data\n` +
-				`• Priority support\n\n` +
-				`*Price:* ${config.priceProMonthly} SEK/month\n\n` +
-				`_Payment integration coming soon. Contact @vome_io for early access._`,
-				{ parse_mode: 'Markdown' }
-			);
+			try {
+				if (!config.stripeSecretKey || !config.stripePriceFyndbotPro) {
+					await bot.sendMessage(chatId,
+						`*Fyndbot Pro* ✨\n\n` +
+						`*Benefits:*\n` +
+						`• AI bargain score (1-10) on every alert\n` +
+						`• Unlimited /inspect commands\n` +
+						`• Vehicle besiktning/tax data\n` +
+						`• Priority support\n\n` +
+						`*Price:* ${config.priceProMonthly} SEK/month\n\n` +
+						`_Payment integration not configured. Contact admin._`,
+						{ parse_mode: 'Markdown' }
+					);
+					return;
+				}
+
+				const checkoutUrl = await createCheckoutSession(telegramId);
+
+				await bot.sendMessage(chatId,
+					`*Fyndbot Pro* ✨\n\n` +
+					`*Benefits:*\n` +
+					`• AI bargain score (1-10) on every alert\n` +
+					`• Unlimited /inspect commands\n` +
+					`• Vehicle besiktning/tax data\n` +
+					`• Priority support\n\n` +
+					`*Price:* ${config.priceProMonthly} SEK/month\n\n` +
+					`Click below to subscribe:`,
+					{ 
+						parse_mode: 'Markdown',
+						reply_markup: {
+							inline_keyboard: [[
+								{ text: '💳 Subscribe to Pro', url: checkoutUrl }
+							]]
+						}
+					}
+				);
+			} catch (error) {
+				console.error('Error creating checkout session:', error);
+				await bot.sendMessage(chatId, '❌ Error creating checkout session. Please try again later.');
+			}
 		}
 	});
 
