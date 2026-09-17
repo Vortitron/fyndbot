@@ -8,7 +8,8 @@ Unofficial Blocket helper bot for Telegram (not affiliated with Blocket/Schibste
 - Watch Blocket searches or category URLs for new listings
 - Follow Blocket sellers to track their ads (new listings + removals)
 - Instant alerts with title, price (SEK), link, and thumbnail
-- Commands: `/start`, `/help`, `/watch`, `/follow`, `/unwatch`, `/unfollow`, `/list`
+- Home Assistant integration via webhooks (automate your alerts!)
+- Commands: `/start`, `/help`, `/watch`, `/follow`, `/unwatch`, `/unfollow`, `/list`, `/ha`
 - Fair-use rate limits
 
 ### Pro Tier
@@ -69,13 +70,14 @@ npm run dev
 
 ### Example Commands
 ```
-/watch https://www.blocket.se/annonser/hela_sverige/fordon/bilar?cg=1020
-/watch https://www.blocket.se/annonser/stockholm/bostad/lagenheter
+/watch https://www.blocket.se/recommerce/forsale/search?category=0.93&location=0.300001
+/watch bilar stockholm
 /follow https://www.blocket.se/annonsorer/seller-name
 /list
 /unwatch W1
 /unfollow F1
-/inspect https://www.blocket.se/annons/123456
+/inspect https://www.blocket.se/recommerce/forsale/item/123456
+/ha set https://your-ha.com/api/webhook/fyndbot_alert
 ```
 
 ### Following Sellers
@@ -83,6 +85,25 @@ Track specific sellers' activity:
 - Get notified when they post new ads
 - Get notified when ads disappear (potentially sold/expired)
 - Works with seller profile URLs or search URLs filtered by seller
+
+### Home Assistant Integration
+
+Send Blocket alerts directly to your Home Assistant installation for powerful automations!
+
+**Quick Start:**
+```
+1. Create webhook in HA (Settings → Automations → Webhook trigger)
+2. /ha set https://your-ha.com/api/webhook/YOUR_ID
+3. /ha test
+```
+
+**Features:**
+- 🔔 Real-time alerts to Home Assistant
+- ⭐ AI bargain scores included (Pro users)
+- 🆓 Free for all users (lead magnet)
+- 🤖 Automate based on price, score, location, category
+
+**See:** [HA_SETUP.md](HA_SETUP.md) for detailed setup guide and automation examples.
 
 ## Pro Tier
 

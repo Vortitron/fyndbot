@@ -1,0 +1,66 @@
+blueprint:
+  name: Fyndbot Alert Notification
+  description: >
+    Receive notifications when Fyndbot detects new Blocket listings.
+    Supports AI bargain scores for Pro users and filters by score threshold.
+  domain: automation
+  input:
+    notify_service:
+      name: Notification Service
+      description: The notification service to use (e.g., notify.mobile_app_your_phone)
+      selector:
+        text:
+    min_score:
+      name: Minimum Bargain Score (Optional)
+      description: Only notify if AI score >= this value (Pro users only, 1-10). Leave at 0 to get all alerts.
+      default: 0
+      selector:
+        number:
+          min: 0
+          max: 10
+          step: 0.1
+
+trigger:
+  - platform: webhook
+    webhook_id: fyndbot_alert
+    id: fyndbot_alert
+
+condition:
+  - condition: template
+    value_template: >
+      {% if trigger.json.score is none %}
+        true
+      {% elif states('input_number.min_score') | float(0) > 0 %}
+        {{ trigger.json.score | float(0) >= states('input_number.min_score') | float(0) }}
+      {% else %}
+        true
+      {% endif %}
+
+action:
+  - service: !input notify_service
+    data:
+      title: "{{ trigger.json.title }}"
+      message: >
+        {% if trigger.json.price %}
+          Price: {{ trigger.json.price }} {{ trigger.json.currency }}
+        {% else %}
+          Price not specified
+        {% endif %}
+        
+        {% if trigger.json.score %}
+          ⭐ Score: {{ trigger.json.score }}/10 - {{ trigger.json.score_reason }}
+        {% endif %}
+        
+        {% if trigger.json.location %}
+          📍 {{ trigger.json.location }}
+        {% endif %}
+        
+        🔗 {{ trigger.json.url }}
+      data:
+        url: "{{ trigger.json.url }}"
+        image: "{{ trigger.json.image_url }}"
+        tag: "fyndbot_{{ trigger.json.watch_id | default(trigger.json.follow_id) }}"
+        group: "fyndbot"
+
+mode: queued
+max: 50

@@ -44,7 +44,7 @@ async function pollAllWatches(bot: TelegramBot): Promise<void> {
 						db.markListingSeen(watch.id, listing.id);
 						
 						if (!isFirstPoll) {
-							await sendAlert(bot, user.telegramId, listing, user.isPro);
+							await sendAlert(bot, user.telegramId, listing, user.isPro, watch.id);
 							newCount++;
 							
 							await new Promise(resolve => setTimeout(resolve, 1000));
@@ -99,7 +99,7 @@ async function pollAllFollows(bot: TelegramBot): Promise<void> {
 						db.markFollowListingSeen(follow.id, listing.id);
 						
 						if (!isFirstPoll) {
-							await sendFollowNewAlert(bot, user.telegramId, listing, follow.sellerName, user.isPro);
+							await sendFollowNewAlert(bot, user.telegramId, listing, follow.sellerName, user.isPro, follow.id);
 							newCount++;
 							
 							await new Promise(resolve => setTimeout(resolve, 1000));

@@ -98,6 +98,11 @@ function migrateUsersTable(): void {
 		db.exec('ALTER TABLE users ADD COLUMN stripe_subscription_id TEXT');
 	}
 
+	if (!columnNames.includes('ha_webhook_url')) {
+		console.log('Migrating users table: adding ha_webhook_url column');
+		db.exec('ALTER TABLE users ADD COLUMN ha_webhook_url TEXT');
+	}
+
 	db.exec('CREATE INDEX IF NOT EXISTS idx_users_stripe_customer ON users(stripe_customer_id)');
 }
 
@@ -364,6 +369,15 @@ export function getUserByStripeSubscriptionId(subscriptionId: string): User | nu
 		inspectResetAt: new Date(row.inspect_reset_at),
 		createdAt: new Date(row.created_at),
 	};
+}
+
+export function setUserHaWebhookUrl(telegramId: number, url: string | null): void {
+	db.prepare('UPDATE users SET ha_webhook_url = ? WHERE telegram_id = ?').run(url, telegramId);
+}
+
+export function getUserHaWebhookUrl(telegramId: number): string | null {
+	const row = db.prepare('SELECT ha_webhook_url FROM users WHERE telegram_id = ?').get(telegramId) as any;
+	return row?.ha_webhook_url || null;
 }
 
 export function closeDatabase(): void {

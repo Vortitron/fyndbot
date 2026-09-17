@@ -6,7 +6,8 @@ import { scoreListing } from '../scorer/index.js';
 import { enrichVehicleData } from '../enrichment/transportstyrelsen.js';
 import { createCheckoutSession } from '../stripe/index.js';
 import { parseWatchShortcut, getCategoryButtons, getRegionButtons, buildWatchUrl } from './watchShortcuts.js';
-import type { BlocketListing } from '../types/index.js';
+import { validateHaWebhookUrl, buildHomeAssistantPayload, notifyHomeAssistant, buildTestPayload } from '../homeassistant.js';
+import type { BlocketListing, BargainScore } from '../types/index.js';
 
 interface WizardState {
 	category?: string;
@@ -123,6 +124,7 @@ I help you find bargains on Blocket.se with instant alerts.
 /unfollow <id> — Stop following
 /inspect <url> — Analyse a listing (Pro feature)
 /pro — View subscription status
+/ha — Home Assistant integration
 /help — Show this help
 
 *Examples:*
@@ -151,6 +153,7 @@ Start watching now!`,
 /unfollow <id> — Stop following (use ID from /list)
 /inspect <url> — Deep analysis of a listing
 /pro — View Pro subscription details
+/ha — Home Assistant integration (automate alerts)
 /help — Show this message
 
 *Examples:*
@@ -550,6 +553,86 @@ Free tier: 3 inspections per week`,
 		}
 	});
 
+	bot.onText(/\/ha(?:\s+(.*))?/, async (msg, match) => {
+		const chatId = msg.chat.id;
+		const telegramId = msg.from!.id;
+		const args = match?.[1]?.trim();
+
+		const user = db.getUserByTelegramId(telegramId);
+		if (!user) {
+			await bot.sendMessage(chatId, 'Use /start first to register.');
+			return;
+		}
+
+		if (!args) {
+			const currentUrl = db.getUserHaWebhookUrl(telegramId);
+			if (currentUrl) {
+				await bot.sendMessage(chatId,
+					`🏠 *Home Assistant Integration*\n\n` +
+					`Status: ✅ Connected\n` +
+					`Webhook: \`${currentUrl.substring(0, 40)}...\`\n\n` +
+					`Commands:\n` +
+					`/ha test — Test connection\n` +
+					`/ha clear — Remove webhook\n\n` +
+					`Your listing alerts will be sent to Home Assistant automatically.`,
+					{ parse_mode: 'Markdown' }
+				);
+			} else {
+				await bot.sendMessage(chatId,
+					`🏠 *Home Assistant Integration*\n\n` +
+					`Status: ❌ Not configured\n\n` +
+					`To connect:\n` +
+					`1. Create webhook in HA (Settings → Automations → +)\n` +
+					`2. Use webhook trigger, copy URL\n` +
+					`3. Send: \`/ha set <URL>\`\n\n` +
+					`See HA_SETUP.md for detailed guide.`,
+					{ parse_mode: 'Markdown' }
+				);
+			}
+			return;
+		}
+
+		const parts = args.split(/\s+/);
+		const command = parts[0].toLowerCase();
+
+		if (command === 'set') {
+			const url = parts.slice(1).join(' ');
+			if (!url) {
+				await bot.sendMessage(chatId, '❌ Please provide a webhook URL.\n\nExample:\n`/ha set https://your-ha.com/api/webhook/XXXXX`', { parse_mode: 'Markdown' });
+				return;
+			}
+
+			if (!validateHaWebhookUrl(url)) {
+				await bot.sendMessage(chatId, '❌ Invalid webhook URL.\n\nMust be:\n• HTTPS\n• Contain `/api/webhook/`\n\nExample:\n`https://your-ha.com/api/webhook/XXXXX`', { parse_mode: 'Markdown' });
+				return;
+			}
+
+			db.setUserHaWebhookUrl(telegramId, url);
+			await bot.sendMessage(chatId, `✅ Home Assistant webhook saved!\n\nUse \`/ha test\` to verify it's working.`, { parse_mode: 'Markdown' });
+		} else if (command === 'clear') {
+			db.setUserHaWebhookUrl(telegramId, null);
+			await bot.sendMessage(chatId, '✅ Home Assistant webhook removed.');
+		} else if (command === 'test') {
+			const webhookUrl = db.getUserHaWebhookUrl(telegramId);
+			if (!webhookUrl) {
+				await bot.sendMessage(chatId, '❌ No webhook configured. Use `/ha set <URL>` first.', { parse_mode: 'Markdown' });
+				return;
+			}
+
+			await bot.sendMessage(chatId, '🧪 Sending test notification to Home Assistant...');
+
+			const testPayload = buildTestPayload();
+			try {
+				await notifyHomeAssistant(webhookUrl, testPayload);
+				await bot.sendMessage(chatId, '✅ Test notification sent! Check your Home Assistant.');
+			} catch (error) {
+				await bot.sendMessage(chatId, '❌ Failed to send test notification. Check your webhook URL.');
+			}
+		} else {
+			await bot.sendMessage(chatId, '❌ Unknown command. Use:\n• `/ha` — Show status\n• `/ha set <URL>`\n• `/ha clear`\n• `/ha test`', { parse_mode: 'Markdown' });
+		}
+	});
+
 	bot.on('polling_error', (error) => {
 		console.error('Telegram polling error:', error);
 	});
@@ -557,10 +640,12 @@ Free tier: 3 inspections per week`,
 	return bot;
 }
 
-export async function sendAlert(bot: TelegramBot, userId: number, listing: BlocketListing, isPro: boolean): Promise<void> {
+export async function sendAlert(bot: TelegramBot, userId: number, listing: BlocketListing, isPro: boolean, watchId?: number): Promise<void> {
 	try {
 		const user = await db.getUserByTelegramId(userId);
 		if (!user) return;
+
+		let score: BargainScore | undefined;
 
 		let message = `🔔 *New Listing!*\n\n`;
 		message += `📋 ${listing.title}\n`;
@@ -571,7 +656,7 @@ export async function sendAlert(bot: TelegramBot, userId: number, listing: Block
 		}
 
 		if (isPro) {
-			const score = await scoreListing(listing);
+			score = await scoreListing(listing);
 			message += `\n⭐ *Bargain Score:* ${score.score}/10\n`;
 			message += `💡 ${score.reason}\n`;
 		}
@@ -586,15 +671,25 @@ export async function sendAlert(bot: TelegramBot, userId: number, listing: Block
 		} else {
 			await bot.sendMessage(user.telegramId, message, { parse_mode: 'Markdown' });
 		}
+
+		const haWebhookUrl = db.getUserHaWebhookUrl(user.telegramId);
+		if (haWebhookUrl) {
+			const haPayload = buildHomeAssistantPayload(listing, user, watchId, undefined, score);
+			notifyHomeAssistant(haWebhookUrl, haPayload).catch(err => {
+				console.error('HA notification failed (non-blocking):', err);
+			});
+		}
 	} catch (error) {
 		console.error('Error sending alert:', error);
 	}
 }
 
-export async function sendFollowNewAlert(bot: TelegramBot, userId: number, listing: BlocketListing, sellerName: string | null, isPro: boolean): Promise<void> {
+export async function sendFollowNewAlert(bot: TelegramBot, userId: number, listing: BlocketListing, sellerName: string | null, isPro: boolean, followId?: number): Promise<void> {
 	try {
 		const user = await db.getUserByTelegramId(userId);
 		if (!user) return;
+
+		let score: BargainScore | undefined;
 
 		const seller = sellerName || 'Seller';
 		let message = `👤 *${seller} posted new ad!*\n\n`;
@@ -606,7 +701,7 @@ export async function sendFollowNewAlert(bot: TelegramBot, userId: number, listi
 		}
 
 		if (isPro) {
-			const score = await scoreListing(listing);
+			score = await scoreListing(listing);
 			message += `\n⭐ *Bargain Score:* ${score.score}/10\n`;
 			message += `💡 ${score.reason}\n`;
 		}
@@ -620,6 +715,14 @@ export async function sendFollowNewAlert(bot: TelegramBot, userId: number, listi
 			});
 		} else {
 			await bot.sendMessage(user.telegramId, message, { parse_mode: 'Markdown' });
+		}
+
+		const haWebhookUrl = db.getUserHaWebhookUrl(user.telegramId);
+		if (haWebhookUrl) {
+			const haPayload = buildHomeAssistantPayload(listing, user, undefined, followId, score);
+			notifyHomeAssistant(haWebhookUrl, haPayload).catch(err => {
+				console.error('HA notification failed (non-blocking):', err);
+			});
 		}
 	} catch (error) {
 		console.error('Error sending follow new alert:', error);
