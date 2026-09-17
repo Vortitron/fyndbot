@@ -1,73 +1,65 @@
-export interface BlocketSearchParams {
-	category?: string;
-	subcategory?: string;
-	region?: string;
-}
-
 export interface ResolvedWatch {
 	url: string;
 	category: string | null;
 	region: string | null;
 }
 
-const CATEGORY_MAP: Record<string, { slug: string; label: string; subcategory?: string }> = {
-	fordon: { slug: 'fordon', label: 'Fordon' },
-	bilar: { slug: 'fordon', label: 'Fordon', subcategory: 'bilar' },
-	cars: { slug: 'fordon', label: 'Fordon', subcategory: 'bilar' },
-	elektronik: { slug: 'elektronik', label: 'Elektronik' },
-	datorer: { slug: 'datorer_tillbehor', label: 'Datorer & Tillbehör' },
-	datorer_tillbehor: { slug: 'datorer_tillbehor', label: 'Datorer & Tillbehör' },
-	mobiler: { slug: 'mobiler_tillbehor', label: 'Mobiler & Tillbehör' },
-	mobiler_tillbehor: { slug: 'mobiler_tillbehor', label: 'Mobiler & Tillbehör' },
-	bostad: { slug: 'bostad', label: 'Bostad' },
-	fritid: { slug: 'fritid_hobby', label: 'Fritid & Hobby' },
-	fritid_hobby: { slug: 'fritid_hobby', label: 'Fritid & Hobby' },
-	personligt: { slug: 'personligt', label: 'Personligt' },
-	hem: { slug: 'home_garden', label: 'Hem & Trädgård' },
-	home_garden: { slug: 'home_garden', label: 'Hem & Trädgård' },
-	mobler: { slug: 'home_garden', label: 'Hem & Trädgård' },
-	barn: { slug: 'barn_barnartiklar', label: 'Barn & Barnartiklar' },
-	barn_barnartiklar: { slug: 'barn_barnartiklar', label: 'Barn & Barnartiklar' },
-	verktyg: { slug: 'tools', label: 'Verktyg' },
-	tools: { slug: 'tools', label: 'Verktyg' },
+const CATEGORY_MAP: Record<string, { categoryId: string; label: string; isCar?: boolean }> = {
+	bilar: { categoryId: 'car', label: 'Bilar', isCar: true },
+	cars: { categoryId: 'car', label: 'Bilar', isCar: true },
+	mobler: { categoryId: '0.78', label: 'Möbler' },
+	möbler: { categoryId: '0.78', label: 'Möbler' },
+	klader: { categoryId: '0.71', label: 'Kläder' },
+	kläder: { categoryId: '0.71', label: 'Kläder' },
+	elektronik: { categoryId: '0.93', label: 'Elektronik' },
+	barn: { categoryId: '0.68', label: 'Barn' },
+	bygg: { categoryId: '0.67', label: 'Bygg' },
+	hobby: { categoryId: '0.86', label: 'Hobby' },
+	sport: { categoryId: '0.69', label: 'Sport' },
+	djur: { categoryId: '0.77', label: 'Djur' },
+	fordon: { categoryId: '0.90', label: 'Fordonstillbehör' },
+	fordonstillbehor: { categoryId: '0.90', label: 'Fordonstillbehör' },
+	antikt: { categoryId: '0.76', label: 'Antikt' },
+	affarr: { categoryId: '0.91', label: 'Affär' },
+	affar: { categoryId: '0.91', label: 'Affär' },
 };
 
-const REGION_MAP: Record<string, { slug: string; label: string }> = {
-	hela_sverige: { slug: 'hela_sverige', label: 'Hela Sverige' },
-	skane: { slug: 'skane', label: 'Skåne' },
-	skåne: { slug: 'skane', label: 'Skåne' },
-	stockholm: { slug: 'stockholm', label: 'Stockholm' },
-	goteborg: { slug: 'vastra_gotalands_lan', label: 'Göteborg' },
-	göteborg: { slug: 'vastra_gotalands_lan', label: 'Göteborg' },
-	malmo: { slug: 'skane', label: 'Malmö' },
-	malmö: { slug: 'skane', label: 'Malmö' },
-	uppsala: { slug: 'uppsala', label: 'Uppsala' },
-	halland: { slug: 'halland', label: 'Halland' },
-	blekinge: { slug: 'blekinge', label: 'Blekinge' },
-	kronoberg: { slug: 'kronoberg', label: 'Kronoberg' },
-	kalmar: { slug: 'kalmar', label: 'Kalmar' },
-	jonkoping: { slug: 'jonkoping', label: 'Jönköping' },
-	jönköping: { slug: 'jonkoping', label: 'Jönköping' },
-	ostergotland: { slug: 'ostergotland', label: 'Östergötland' },
-	östergötland: { slug: 'ostergotland', label: 'Östergötland' },
-	sodermanland: { slug: 'sodermanland', label: 'Södermanland' },
-	södermanland: { slug: 'sodermanland', label: 'Södermanland' },
-	vastmanland: { slug: 'vastmanland', label: 'Västmanland' },
-	västmanland: { slug: 'vastmanland', label: 'Västmanland' },
-	orebro: { slug: 'orebro', label: 'Örebro' },
-	örebro: { slug: 'orebro', label: 'Örebro' },
-	varmland: { slug: 'varmland', label: 'Värmland' },
-	värmland: { slug: 'varmland', label: 'Värmland' },
-	dalarna: { slug: 'dalarna', label: 'Dalarna' },
-	gavleborg: { slug: 'gavleborg', label: 'Gävleborg' },
-	gävleborg: { slug: 'gavleborg', label: 'Gävleborg' },
-	vasternorrland: { slug: 'vasternorrland', label: 'Västernorrland' },
-	västernorrland: { slug: 'vasternorrland', label: 'Västernorrland' },
-	jamtland: { slug: 'jamtland', label: 'Jämtland' },
-	jämtland: { slug: 'jamtland', label: 'Jämtland' },
-	vasterbotten: { slug: 'vasterbotten', label: 'Västerbotten' },
-	västerbotten: { slug: 'vasterbotten', label: 'Västerbotten' },
-	norrbotten: { slug: 'norrbotten', label: 'Norrbotten' },
+const LOCATION_MAP: Record<string, { locationId: string; label: string }> = {
+	skane: { locationId: '0.300012', label: 'Skåne' },
+	skåne: { locationId: '0.300012', label: 'Skåne' },
+	stockholm: { locationId: '0.300001', label: 'Stockholm' },
+	vastra_gotaland: { locationId: '0.300014', label: 'Västra Götaland' },
+	vastra_götaland: { locationId: '0.300014', label: 'Västra Götaland' },
+	goteborg: { locationId: '0.300014', label: 'Göteborg' },
+	göteborg: { locationId: '0.300014', label: 'Göteborg' },
+	halland: { locationId: '0.300013', label: 'Halland' },
+	blekinge: { locationId: '0.300010', label: 'Blekinge' },
+	kronoberg: { locationId: '0.300007', label: 'Kronoberg' },
+	kalmar: { locationId: '0.300008', label: 'Kalmar' },
+	jonkoping: { locationId: '0.300006', label: 'Jönköping' },
+	jönköping: { locationId: '0.300006', label: 'Jönköping' },
+	ostergotland: { locationId: '0.300005', label: 'Östergötland' },
+	östergötland: { locationId: '0.300005', label: 'Östergötland' },
+	uppsala: { locationId: '0.300003', label: 'Uppsala' },
+	sodermanland: { locationId: '0.300004', label: 'Södermanland' },
+	södermanland: { locationId: '0.300004', label: 'Södermanland' },
+	orebro: { locationId: '0.300018', label: 'Örebro' },
+	örebro: { locationId: '0.300018', label: 'Örebro' },
+	vastmanland: { locationId: '0.300019', label: 'Västmanland' },
+	västmanland: { locationId: '0.300019', label: 'Västmanland' },
+	varmland: { locationId: '0.300017', label: 'Värmland' },
+	värmland: { locationId: '0.300017', label: 'Värmland' },
+	dalarna: { locationId: '0.300020', label: 'Dalarna' },
+	gavleborg: { locationId: '0.300021', label: 'Gävleborg' },
+	gävleborg: { locationId: '0.300021', label: 'Gävleborg' },
+	vasternorrland: { locationId: '0.300022', label: 'Västernorrland' },
+	västernorrland: { locationId: '0.300022', label: 'Västernorrland' },
+	jamtland: { locationId: '0.300023', label: 'Jämtland' },
+	jämtland: { locationId: '0.300023', label: 'Jämtland' },
+	vasterbotten: { locationId: '0.300024', label: 'Västerbotten' },
+	västerbotten: { locationId: '0.300024', label: 'Västerbotten' },
+	norrbotten: { locationId: '0.300025', label: 'Norrbotten' },
+	gotland: { locationId: '0.300009', label: 'Gotland' },
 };
 
 function normalizeSwedish(text: string): string {
@@ -86,97 +78,102 @@ export function parseWatchShortcut(text: string): ResolvedWatch | null {
 
 	const words = text.toLowerCase().split(/\s+/);
 	
-	let category: string | null = null;
-	let subcategory: string | null = null;
-	let region: string | null = null;
+	let category: { categoryId: string; label: string; isCar?: boolean } | null = null;
+	let location: string | null = null;
 
 	for (const word of words) {
 		const normalized = normalizeSwedish(word);
 		
 		if (CATEGORY_MAP[word] || CATEGORY_MAP[normalized]) {
-			const cat = CATEGORY_MAP[word] || CATEGORY_MAP[normalized];
-			category = cat.slug;
-			if (cat.subcategory) {
-				subcategory = cat.subcategory;
-			}
+			category = CATEGORY_MAP[word] || CATEGORY_MAP[normalized];
 		}
 		
-		if (REGION_MAP[word] || REGION_MAP[normalized]) {
-			const reg = REGION_MAP[word] || REGION_MAP[normalized];
-			region = reg.slug;
+		if (LOCATION_MAP[word] || LOCATION_MAP[normalized]) {
+			const loc = LOCATION_MAP[word] || LOCATION_MAP[normalized];
+			location = loc.locationId;
 		}
 	}
 
-	if (!category && !region) {
+	if (!category) {
 		return null;
 	}
 
-	if (!category && region) {
-		return null;
-	}
-
-	if (category && !region) {
-		region = 'hela_sverige';
-	}
-
-	let url = `https://www.blocket.se/annonser/${region}/${category}`;
-	if (subcategory) {
-		url += `/${subcategory}`;
+	let url: string;
+	if (category.isCar) {
+		url = 'https://www.blocket.se/mobility/search/car';
+		if (location) {
+			url += `?location=${location}`;
+		}
+	} else {
+		url = `https://www.blocket.se/recommerce/forsale/search?category=${category.categoryId}`;
+		if (location) {
+			url += `&location=${location}`;
+		}
 	}
 
 	return {
 		url,
-		category: category || null,
-		region: region || null,
+		category: category.categoryId,
+		region: location,
 	};
 }
 
 export function getCategoryButtons(): Array<{ text: string; callbackData: string }> {
 	return [
-		{ text: '🚗 Fordon', callbackData: 'wcat:fordon' },
-		{ text: '🚙 Bilar', callbackData: 'wcat:fordon/bilar' },
-		{ text: '💻 Elektronik', callbackData: 'wcat:elektronik' },
-		{ text: '🖥️ Datorer', callbackData: 'wcat:datorer_tillbehor' },
-		{ text: '📱 Mobiler', callbackData: 'wcat:mobiler_tillbehor' },
-		{ text: '🏠 Bostad', callbackData: 'wcat:bostad' },
-		{ text: '⚽ Fritid', callbackData: 'wcat:fritid_hobby' },
-		{ text: '🪑 Hem & Trädgård', callbackData: 'wcat:home_garden' },
-		{ text: '👶 Barn', callbackData: 'wcat:barn_barnartiklar' },
-		{ text: '🔧 Verktyg', callbackData: 'wcat:tools' },
+		{ text: '🚙 Bilar', callbackData: 'wcat:car' },
+		{ text: '🔧 Fordonstillbehör', callbackData: 'wcat:0.90' },
+		{ text: '💻 Elektronik', callbackData: 'wcat:0.93' },
+		{ text: '🪑 Möbler', callbackData: 'wcat:0.78' },
+		{ text: '👕 Kläder', callbackData: 'wcat:0.71' },
+		{ text: '👶 Barn', callbackData: 'wcat:0.68' },
+		{ text: '🏗️ Bygg', callbackData: 'wcat:0.67' },
+		{ text: '🎨 Hobby', callbackData: 'wcat:0.86' },
+		{ text: '⚽ Sport', callbackData: 'wcat:0.69' },
+		{ text: '🐕 Djur', callbackData: 'wcat:0.77' },
+		{ text: '🏛️ Antikt', callbackData: 'wcat:0.76' },
+		{ text: '🏢 Affär', callbackData: 'wcat:0.91' },
 	];
 }
 
 export function getRegionButtons(): Array<{ text: string; callbackData: string }> {
 	return [
-		{ text: '🇸🇪 Hela Sverige', callbackData: 'wreg:hela_sverige' },
-		{ text: 'Stockholm', callbackData: 'wreg:stockholm' },
-		{ text: 'Skåne', callbackData: 'wreg:skane' },
-		{ text: 'Göteborg', callbackData: 'wreg:vastra_gotalands_lan' },
-		{ text: 'Uppsala', callbackData: 'wreg:uppsala' },
-		{ text: 'Halland', callbackData: 'wreg:halland' },
-		{ text: 'Blekinge', callbackData: 'wreg:blekinge' },
-		{ text: 'Kronoberg', callbackData: 'wreg:kronoberg' },
-		{ text: 'Kalmar', callbackData: 'wreg:kalmar' },
-		{ text: 'Jönköping', callbackData: 'wreg:jonkoping' },
-		{ text: 'Östergötland', callbackData: 'wreg:ostergotland' },
-		{ text: 'Södermanland', callbackData: 'wreg:sodermanland' },
-		{ text: 'Västmanland', callbackData: 'wreg:vastmanland' },
-		{ text: 'Örebro', callbackData: 'wreg:orebro' },
-		{ text: 'Värmland', callbackData: 'wreg:varmland' },
-		{ text: 'Dalarna', callbackData: 'wreg:dalarna' },
-		{ text: 'Gävleborg', callbackData: 'wreg:gavleborg' },
-		{ text: 'Västernorrland', callbackData: 'wreg:vasternorrland' },
-		{ text: 'Jämtland', callbackData: 'wreg:jamtland' },
-		{ text: 'Västerbotten', callbackData: 'wreg:vasterbotten' },
-		{ text: 'Norrbotten', callbackData: 'wreg:norrbotten' },
+		{ text: '🇸🇪 Hela Sverige', callbackData: 'wreg:' },
+		{ text: 'Stockholm', callbackData: 'wreg:0.300001' },
+		{ text: 'Skåne', callbackData: 'wreg:0.300012' },
+		{ text: 'Västra Götaland', callbackData: 'wreg:0.300014' },
+		{ text: 'Uppsala', callbackData: 'wreg:0.300003' },
+		{ text: 'Halland', callbackData: 'wreg:0.300013' },
+		{ text: 'Blekinge', callbackData: 'wreg:0.300010' },
+		{ text: 'Kronoberg', callbackData: 'wreg:0.300007' },
+		{ text: 'Kalmar', callbackData: 'wreg:0.300008' },
+		{ text: 'Jönköping', callbackData: 'wreg:0.300006' },
+		{ text: 'Östergötland', callbackData: 'wreg:0.300005' },
+		{ text: 'Södermanland', callbackData: 'wreg:0.300004' },
+		{ text: 'Västmanland', callbackData: 'wreg:0.300019' },
+		{ text: 'Örebro', callbackData: 'wreg:0.300018' },
+		{ text: 'Värmland', callbackData: 'wreg:0.300017' },
+		{ text: 'Dalarna', callbackData: 'wreg:0.300020' },
+		{ text: 'Gävleborg', callbackData: 'wreg:0.300021' },
+		{ text: 'Västernorrland', callbackData: 'wreg:0.300022' },
+		{ text: 'Jämtland', callbackData: 'wreg:0.300023' },
+		{ text: 'Västerbotten', callbackData: 'wreg:0.300024' },
+		{ text: 'Norrbotten', callbackData: 'wreg:0.300025' },
+		{ text: 'Gotland', callbackData: 'wreg:0.300009' },
 	];
 }
 
 export function buildWatchUrl(category: string, region: string): string {
-	const parts = category.split('/');
-	let url = `https://www.blocket.se/annonser/${region}/${parts[0]}`;
-	if (parts[1]) {
-		url += `/${parts[1]}`;
+	if (category === 'car') {
+		let url = 'https://www.blocket.se/mobility/search/car';
+		if (region) {
+			url += `?location=${region}`;
+		}
+		return url;
+	}
+
+	let url = `https://www.blocket.se/recommerce/forsale/search?category=${category}`;
+	if (region) {
+		url += `&location=${region}`;
 	}
 	return url;
 }

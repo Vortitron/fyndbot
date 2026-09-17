@@ -31,20 +31,19 @@ async function pollAllWatches(bot: TelegramBot): Promise<void> {
 
 		for (const watch of watches) {
 			try {
-				const user = await db.getUserByTelegramId(watch.userId);
+				const user = db.getUserById(watch.userId);
 				if (!user) continue;
 
 				const listings = await fetchBlocketSearch(watch.url);
+				const previousListingIds = db.getSeenListings(watch.id);
+				const isFirstPoll = previousListingIds.length === 0;
 
 				let newCount = 0;
 				for (const listing of listings) {
 					if (!db.isListingSeen(watch.id, listing.id)) {
 						db.markListingSeen(watch.id, listing.id);
 						
-						const age = Date.now() - listing.publishedAt.getTime();
-						const ageHours = age / (1000 * 60 * 60);
-						
-						if (ageHours < 24) {
+						if (!isFirstPoll) {
 							await sendAlert(bot, user.telegramId, listing, user.isPro);
 							newCount++;
 							
@@ -55,7 +54,9 @@ async function pollAllWatches(bot: TelegramBot): Promise<void> {
 
 				db.updateWatchLastChecked(watch.id);
 
-				if (newCount > 0) {
+				if (isFirstPoll) {
+					console.log(`Watch ${watch.id}: Seed mode - marked ${listings.length} listings as seen`);
+				} else if (newCount > 0) {
 					console.log(`Watch ${watch.id}: Found ${newCount} new listings`);
 				}
 
@@ -78,13 +79,14 @@ async function pollAllFollows(bot: TelegramBot): Promise<void> {
 
 		for (const follow of follows) {
 			try {
-				const user = await db.getUserByTelegramId(follow.userId);
+				const user = db.getUserById(follow.userId);
 				if (!user) continue;
 
 				const listings = await fetchBlocketSearch(follow.sellerUrl);
 
 				const currentListingIds = new Set(listings.map(l => l.id));
 				const previousListingIds = db.getFollowListings(follow.id);
+				const isFirstPoll = previousListingIds.length === 0;
 
 				const listingMap = new Map<string, BlocketListing>();
 				for (const listing of listings) {
@@ -96,10 +98,7 @@ async function pollAllFollows(bot: TelegramBot): Promise<void> {
 					if (!previousListingIds.includes(listing.id)) {
 						db.markFollowListingSeen(follow.id, listing.id);
 						
-						const age = Date.now() - listing.publishedAt.getTime();
-						const ageHours = age / (1000 * 60 * 60);
-						
-						if (ageHours < 24) {
+						if (!isFirstPoll) {
 							await sendFollowNewAlert(bot, user.telegramId, listing, follow.sellerName, user.isPro);
 							newCount++;
 							
@@ -109,23 +108,27 @@ async function pollAllFollows(bot: TelegramBot): Promise<void> {
 				}
 
 				let disappearedCount = 0;
-				for (const previousId of previousListingIds) {
-					if (!currentListingIds.has(previousId)) {
-						db.markFollowListingDisappeared(follow.id, previousId);
-						
-						const listing = await getCachedListingInfo(previousId, follow.id);
-						if (listing) {
-							await sendFollowDisappearedAlert(bot, user.telegramId, listing, follow.sellerName);
-							disappearedCount++;
+				if (!isFirstPoll) {
+					for (const previousId of previousListingIds) {
+						if (!currentListingIds.has(previousId)) {
+							db.markFollowListingDisappeared(follow.id, previousId);
 							
-							await new Promise(resolve => setTimeout(resolve, 1000));
+							const listing = await getCachedListingInfo(previousId, follow.id);
+							if (listing) {
+								await sendFollowDisappearedAlert(bot, user.telegramId, listing, follow.sellerName);
+								disappearedCount++;
+								
+								await new Promise(resolve => setTimeout(resolve, 1000));
+							}
 						}
 					}
 				}
 
 				db.updateFollowLastChecked(follow.id);
 
-				if (newCount > 0 || disappearedCount > 0) {
+				if (isFirstPoll) {
+					console.log(`Follow ${follow.id}: Seed mode - marked ${listings.length} listings as seen`);
+				} else if (newCount > 0 || disappearedCount > 0) {
 					console.log(`Follow ${follow.id}: ${newCount} new, ${disappearedCount} disappeared`);
 				}
 

@@ -151,6 +151,22 @@ export function getUserByTelegramId(telegramId: number): User | null {
 	};
 }
 
+export function getUserById(id: number): User | null {
+	const row = db.prepare('SELECT * FROM users WHERE id = ?').get(id) as any;
+	
+	if (!row) return null;
+
+	return {
+		id: row.id,
+		telegramId: row.telegram_id,
+		username: row.username,
+		isPro: row.is_pro === 1,
+		inspectCount: row.inspect_count,
+		inspectResetAt: new Date(row.inspect_reset_at),
+		createdAt: new Date(row.created_at),
+	};
+}
+
 export function createWatch(userId: number, url: string, name: string | null): Watch {
 	const now = Date.now();
 	
@@ -210,6 +226,11 @@ export function updateWatchLastChecked(id: number): void {
 export function isListingSeen(watchId: number, listingId: string): boolean {
 	const row = db.prepare('SELECT 1 FROM seen_listings WHERE watch_id = ? AND listing_id = ?').get(watchId, listingId);
 	return !!row;
+}
+
+export function getSeenListings(watchId: number): string[] {
+	const rows = db.prepare('SELECT listing_id FROM seen_listings WHERE watch_id = ?').all(watchId) as any[];
+	return rows.map(row => row.listing_id);
 }
 
 export function markListingSeen(watchId: number, listingId: string): void {
