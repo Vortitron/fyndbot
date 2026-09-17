@@ -21,6 +21,16 @@ export interface Watch {
 	active: boolean;
 }
 
+export interface Follow {
+	id: number;
+	userId: number;
+	sellerUrl: string;
+	sellerName: string | null;
+	lastChecked: Date;
+	createdAt: Date;
+	active: boolean;
+}
+
 export interface User {
 	id: number;
 	telegramId: number;

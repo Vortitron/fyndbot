@@ -168,3 +168,29 @@ export function extractRegistrationNumber(text: string): string | null {
 	const match = text.match(regNrPattern);
 	return match ? match[0].replace(/\s/g, '').toUpperCase() : null;
 }
+
+export function extractSellerFromUrl(url: string): { sellerUrl: string; sellerName: string | null } | null {
+	const sellerPattern = /blocket\.se\/annonsorer\/([^\/\?]+)/;
+	const match = url.match(sellerPattern);
+	
+	if (match) {
+		const sellerSlug = match[1];
+		return {
+			sellerUrl: `https://www.blocket.se/annonsorer/${sellerSlug}`,
+			sellerName: sellerSlug.replace(/[-_]/g, ' '),
+		};
+	}
+
+	const storePattern = /st=s&st_s=([^&]+)/;
+	const storeMatch = url.match(storePattern);
+	
+	if (storeMatch) {
+		const storeId = decodeURIComponent(storeMatch[1]);
+		return {
+			sellerUrl: url,
+			sellerName: storeId,
+		};
+	}
+
+	return null;
+}

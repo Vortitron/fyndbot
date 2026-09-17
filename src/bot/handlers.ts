@@ -1,7 +1,7 @@
 import TelegramBot from 'node-telegram-bot-api';
 import { config } from '../config.js';
 import * as db from '../database/index.js';
-import { fetchBlocketSearch, fetchBlocketAd, extractRegistrationNumber } from '../blocket/fetcher.js';
+import { fetchBlocketSearch, fetchBlocketAd, extractRegistrationNumber, extractSellerFromUrl } from '../blocket/fetcher.js';
 import { scoreListing } from '../scorer/index.js';
 import { enrichVehicleData } from '../enrichment/transportstyrelsen.js';
 import type { BlocketListing } from '../types/index.js';
@@ -23,14 +23,17 @@ I help you find bargains on Blocket.se with instant alerts.
 
 *Commands:*
 /watch <url> — Watch a Blocket search
-/list — Show your watches
+/follow <url> — Follow a Blocket seller
+/list — Show your watches and follows
 /unwatch <id> — Stop watching
+/unfollow <id> — Stop following
 /inspect <url> — Analyse a listing (Pro feature)
 /pro — View subscription status
 /help — Show this help
 
 *Example:*
 \`/watch https://www.blocket.se/annonser/hela_sverige/fordon/bilar\`
+\`/follow https://www.blocket.se/annonsorer/seller-name\`
 
 Start watching now!`, 
 			{ parse_mode: 'Markdown' }
@@ -44,8 +47,10 @@ Start watching now!`,
 `*Fyndbot Commands*
 
 /watch <url> — Start watching a Blocket search
-/list — List all your active watches
+/follow <url> — Follow a Blocket seller
+/list — List all your active watches and follows
 /unwatch <id> — Stop watching (use ID from /list)
+/unfollow <id> — Stop following (use ID from /list)
 /inspect <url> — Deep analysis of a listing
 /pro — View Pro subscription details
 /help — Show this message
@@ -110,41 +115,64 @@ Free tier: 3 inspections per week`,
 		}
 
 		const watches = db.getWatchesByUserId(user.id);
+		const follows = db.getFollowsByUserId(user.id);
 
-		if (watches.length === 0) {
-			await bot.sendMessage(chatId, 'No active watches. Use /watch <url> to add one!');
+		if (watches.length === 0 && follows.length === 0) {
+			await bot.sendMessage(chatId, 'No active watches or follows.\n\nUse /watch <url> to watch searches.\nUse /follow <url> to follow sellers.');
 			return;
 		}
 
-		let message = '*Your watches:*\n\n';
-		for (const watch of watches) {
-			const shortUrl = watch.url.length > 50 
-				? watch.url.substring(0, 47) + '...'
-				: watch.url;
-			message += `${watch.id}. ${shortUrl}\n`;
+		let message = '';
+
+		if (watches.length > 0) {
+			message += '*Watches:*\n';
+			for (const watch of watches) {
+				const shortUrl = watch.url.length > 50 
+					? watch.url.substring(0, 47) + '...'
+					: watch.url;
+				message += `W${watch.id}. ${shortUrl}\n`;
+			}
+			message += '\n';
 		}
-		message += `\nUse \`/unwatch <id>\` to stop watching.`;
+
+		if (follows.length > 0) {
+			message += '*Follows:*\n';
+			for (const follow of follows) {
+				const displayName = follow.sellerName || 'Unknown seller';
+				message += `F${follow.id}. ${displayName}\n`;
+			}
+			message += '\n';
+		}
+
+		message += 'Use `/unwatch W<id>` or `/unfollow F<id>` to stop.';
 
 		await bot.sendMessage(chatId, message, { parse_mode: 'Markdown' });
 	});
 
-	bot.onText(/\/unwatch(?:\s+(\d+))?/, async (msg, match) => {
+	bot.onText(/\/unwatch(?:\s+(.+))?/, async (msg, match) => {
 		const chatId = msg.chat.id;
 		const telegramId = msg.from!.id;
 
 		if (msg.text === '/unwatch') {
-			await bot.sendMessage(chatId, 'Usage: `/unwatch <id>`\n\nGet IDs from /list', { parse_mode: 'Markdown' });
+			await bot.sendMessage(chatId, 'Usage: `/unwatch W<id>`\n\nGet IDs from /list', { parse_mode: 'Markdown' });
 			return;
 		}
 
-		const watchIdStr = match?.[1];
+		const watchIdStr = match?.[1]?.trim();
 		
 		if (!watchIdStr) {
 			await bot.sendMessage(chatId, 'Please provide a watch ID. Use /list to see your watches.');
 			return;
 		}
 
-		const watchId = parseInt(watchIdStr, 10);
+		const cleanId = watchIdStr.replace(/^W/i, '');
+		const watchId = parseInt(cleanId, 10);
+
+		if (isNaN(watchId)) {
+			await bot.sendMessage(chatId, 'Invalid watch ID. Use format W<number> (e.g., W1).');
+			return;
+		}
+
 		const user = db.getUserByTelegramId(telegramId);
 
 		if (!user) {
@@ -155,9 +183,99 @@ Free tier: 3 inspections per week`,
 		const deleted = db.deleteWatch(watchId, user.id);
 
 		if (deleted) {
-			await bot.sendMessage(chatId, `✅ Watch ${watchId} removed.`);
+			await bot.sendMessage(chatId, `✅ Watch W${watchId} removed.`);
 		} else {
-			await bot.sendMessage(chatId, `Watch ${watchId} not found or doesn't belong to you.`);
+			await bot.sendMessage(chatId, `Watch W${watchId} not found or doesn't belong to you.`);
+		}
+	});
+
+	bot.onText(/\/follow(?:\s+(.+))?/, async (msg, match) => {
+		const chatId = msg.chat.id;
+		const telegramId = msg.from!.id;
+		const username = msg.from!.username || null;
+
+		if (msg.text === '/follow') {
+			await bot.sendMessage(chatId, 'Usage: `/follow <blocket_seller_url>`\n\nExample:\n`/follow https://www.blocket.se/annonsorer/seller-name`', { parse_mode: 'Markdown' });
+			return;
+		}
+
+		const url = match?.[1]?.trim();
+		
+		if (!url) {
+			await bot.sendMessage(chatId, 'Please provide a Blocket seller URL.');
+			return;
+		}
+
+		if (!url.includes('blocket.se')) {
+			await bot.sendMessage(chatId, 'Please provide a valid Blocket.se URL.');
+			return;
+		}
+
+		const sellerInfo = extractSellerFromUrl(url);
+
+		if (!sellerInfo) {
+			await bot.sendMessage(chatId, 'Could not identify seller from URL.\n\nValid formats:\n• https://www.blocket.se/annonsorer/seller-name\n• Search URL with seller filter (st=s&st_s=...)');
+			return;
+		}
+
+		const user = db.getOrCreateUser(telegramId, username);
+		const existingFollows = db.getFollowsByUserId(user.id);
+
+		if (existingFollows.length >= 10) {
+			await bot.sendMessage(chatId, 'You have reached the maximum of 10 follows. Use /unfollow to remove one first.');
+			return;
+		}
+
+		const existingFollow = existingFollows.find(f => f.sellerUrl === sellerInfo.sellerUrl);
+		if (existingFollow) {
+			await bot.sendMessage(chatId, `You're already following this seller (F${existingFollow.id}).`);
+			return;
+		}
+
+		const follow = db.createFollow(user.id, sellerInfo.sellerUrl, sellerInfo.sellerName);
+
+		await bot.sendMessage(chatId, 
+			`✅ Now following ${sellerInfo.sellerName || 'seller'}!\n\nFollow ID: F${follow.id}\n\nYou'll be notified when they post new ads or remove existing ones.\n\nUse /list to see all follows.`
+		);
+	});
+
+	bot.onText(/\/unfollow(?:\s+(.+))?/, async (msg, match) => {
+		const chatId = msg.chat.id;
+		const telegramId = msg.from!.id;
+
+		if (msg.text === '/unfollow') {
+			await bot.sendMessage(chatId, 'Usage: `/unfollow F<id>`\n\nGet IDs from /list', { parse_mode: 'Markdown' });
+			return;
+		}
+
+		const followIdStr = match?.[1]?.trim();
+		
+		if (!followIdStr) {
+			await bot.sendMessage(chatId, 'Please provide a follow ID. Use /list to see your follows.');
+			return;
+		}
+
+		const cleanId = followIdStr.replace(/^F/i, '');
+		const followId = parseInt(cleanId, 10);
+
+		if (isNaN(followId)) {
+			await bot.sendMessage(chatId, 'Invalid follow ID. Use format F<number> (e.g., F1).');
+			return;
+		}
+
+		const user = db.getUserByTelegramId(telegramId);
+
+		if (!user) {
+			await bot.sendMessage(chatId, 'User not found. Use /start first.');
+			return;
+		}
+
+		const deleted = db.deleteFollow(followId, user.id);
+
+		if (deleted) {
+			await bot.sendMessage(chatId, `✅ Follow F${followId} removed.`);
+		} else {
+			await bot.sendMessage(chatId, `Follow F${followId} not found or doesn't belong to you.`);
 		}
 	});
 
@@ -305,5 +423,62 @@ export async function sendAlert(bot: TelegramBot, userId: number, listing: Block
 		}
 	} catch (error) {
 		console.error('Error sending alert:', error);
+	}
+}
+
+export async function sendFollowNewAlert(bot: TelegramBot, userId: number, listing: BlocketListing, sellerName: string | null, isPro: boolean): Promise<void> {
+	try {
+		const user = await db.getUserByTelegramId(userId);
+		if (!user) return;
+
+		const seller = sellerName || 'Seller';
+		let message = `👤 *${seller} posted new ad!*\n\n`;
+		message += `📋 ${listing.title}\n`;
+		message += `💰 ${listing.price ? listing.price + ' ' + listing.currency : 'Price not specified'}\n`;
+		
+		if (listing.location) {
+			message += `📍 ${listing.location}\n`;
+		}
+
+		if (isPro) {
+			const score = await scoreListing(listing);
+			message += `\n⭐ *Bargain Score:* ${score.score}/10\n`;
+			message += `💡 ${score.reason}\n`;
+		}
+
+		message += `\n🔗 ${listing.url}`;
+
+		if (listing.imageUrl) {
+			await bot.sendPhoto(user.telegramId, listing.imageUrl, {
+				caption: message,
+				parse_mode: 'Markdown',
+			});
+		} else {
+			await bot.sendMessage(user.telegramId, message, { parse_mode: 'Markdown' });
+		}
+	} catch (error) {
+		console.error('Error sending follow new alert:', error);
+	}
+}
+
+export async function sendFollowDisappearedAlert(bot: TelegramBot, userId: number, listing: BlocketListing, sellerName: string | null): Promise<void> {
+	try {
+		const user = await db.getUserByTelegramId(userId);
+		if (!user) return;
+
+		const seller = sellerName || 'Seller';
+		let message = `📤 *${seller}'s ad no longer listed*\n\n`;
+		message += `📋 ${listing.title}\n`;
+		message += `💰 ${listing.price ? listing.price + ' ' + listing.currency : 'Price not specified'}\n`;
+		
+		if (listing.location) {
+			message += `📍 ${listing.location}\n`;
+		}
+
+		message += `\n_This ad has been removed, sold, or expired._`;
+
+		await bot.sendMessage(user.telegramId, message, { parse_mode: 'Markdown' });
+	} catch (error) {
+		console.error('Error sending follow disappeared alert:', error);
 	}
 }

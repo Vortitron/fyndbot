@@ -105,7 +105,7 @@ Tests heuristic bargain scoring:
 npm test
 ```
 
-Should show: **14 tests passing**
+Should show: **27 tests passing**
 
 ## Common Issues
 
@@ -181,6 +181,7 @@ src/
 - `fetchBlocketSearch(url)` — Get listings from search
 - `fetchBlocketAd(url)` — Get single ad details
 - `extractRegistrationNumber(text)` — Find Swedish reg numbers
+- `extractSellerFromUrl(url)` — Extract seller info from URLs
 
 **Scorer** (`scorer/index.ts`):
 - `scoreListing(listing)` — Return 1-10 score + reason
@@ -188,12 +189,15 @@ src/
 - Heuristic fallback (deterministic)
 
 **Bot** (`bot/handlers.ts`):
-- Command handlers: `/start`, `/watch`, `/list`, `/unwatch`, `/inspect`, `/pro`
+- Command handlers: `/start`, `/watch`, `/follow`, `/list`, `/unwatch`, `/unfollow`, `/inspect`, `/pro`
 - `sendAlert()` — Notify user of new listing
+- `sendFollowNewAlert()` — Notify user of seller's new ad
+- `sendFollowDisappearedAlert()` — Notify user when ad disappears
 
 **Poller** (`bot/poller.ts`):
 - `startPoller()` — Background interval
 - `pollAllWatches()` — Check all watches for new listings
+- `pollAllFollows()` — Check all follows for new/disappeared ads
 
 ### Adding Features
 

@@ -6,8 +6,9 @@ Unofficial Blocket helper bot for Telegram (not affiliated with Blocket/Schibste
 
 ### Free Tier
 - Watch Blocket searches or category URLs for new listings
+- Follow Blocket sellers to track their ads (new listings + removals)
 - Instant alerts with title, price (SEK), link, and thumbnail
-- Commands: `/start`, `/help`, `/watch`, `/unwatch`, `/list`
+- Commands: `/start`, `/help`, `/watch`, `/follow`, `/unwatch`, `/unfollow`, `/list`
 - Fair-use rate limits
 
 ### Pro Tier
@@ -63,16 +64,25 @@ npm run dev
 1. Start your bot on Telegram
 2. Send `/start` to begin
 3. Send `/watch <blocket_url>` with a Blocket search or category URL
-4. Receive alerts when new listings appear!
+4. Send `/follow <seller_url>` to track a specific seller's ads
+5. Receive alerts when new listings appear or sellers remove ads!
 
 ### Example Commands
 ```
 /watch https://www.blocket.se/annonser/hela_sverige/fordon/bilar?cg=1020
 /watch https://www.blocket.se/annonser/stockholm/bostad/lagenheter
+/follow https://www.blocket.se/annonsorer/seller-name
 /list
-/unwatch 1
+/unwatch W1
+/unfollow F1
 /inspect https://www.blocket.se/annons/123456
 ```
+
+### Following Sellers
+Track specific sellers' activity:
+- Get notified when they post new ads
+- Get notified when ads disappear (potentially sold/expired)
+- Works with seller profile URLs or search URLs filtered by seller
 
 ## Pro Tier
 
