@@ -5,10 +5,103 @@ import { fetchBlocketSearch, fetchBlocketAd, extractRegistrationNumber, extractS
 import { scoreListing } from '../scorer/index.js';
 import { enrichVehicleData } from '../enrichment/transportstyrelsen.js';
 import { createCheckoutSession } from '../stripe/index.js';
+import { parseWatchShortcut, getCategoryButtons, getRegionButtons, buildWatchUrl } from './watchShortcuts.js';
 import type { BlocketListing } from '../types/index.js';
+
+interface WizardState {
+	category?: string;
+	timestamp: number;
+}
+
+const wizardState = new Map<number, WizardState>();
+const WIZARD_TTL_MS = 10 * 60 * 1000;
 
 export function createBot(): TelegramBot {
 	const bot = new TelegramBot(config.telegramBotToken, { polling: true });
+
+	bot.on('callback_query', async (query) => {
+		const chatId = query.message?.chat.id;
+		const telegramId = query.from.id;
+		const data = query.data;
+
+		if (!chatId || !data) {
+			return;
+		}
+
+		try {
+			await bot.answerCallbackQuery(query.id);
+
+			if (data.startsWith('wcat:')) {
+				const category = data.substring(5);
+				cleanupExpiredWizards();
+				wizardState.set(telegramId, { category, timestamp: Date.now() });
+
+				const regionButtons = getRegionButtons();
+				const keyboard = [];
+				for (let i = 0; i < regionButtons.length; i += 3) {
+					const row = [
+						{ text: regionButtons[i].text, callback_data: regionButtons[i].callbackData }
+					];
+					if (regionButtons[i + 1]) {
+						row.push({ text: regionButtons[i + 1].text, callback_data: regionButtons[i + 1].callbackData });
+					}
+					if (regionButtons[i + 2]) {
+						row.push({ text: regionButtons[i + 2].text, callback_data: regionButtons[i + 2].callbackData });
+					}
+					keyboard.push(row);
+				}
+
+				await bot.editMessageText('📍 *Choose a region:*', {
+					chat_id: chatId,
+					message_id: query.message?.message_id,
+					parse_mode: 'Markdown',
+					reply_markup: {
+						inline_keyboard: keyboard
+					}
+				});
+			} else if (data.startsWith('wreg:')) {
+				const region = data.substring(5);
+				const state = wizardState.get(telegramId);
+
+				if (!state || !state.category) {
+					await bot.editMessageText('❌ Session expired. Please start again with /watch', {
+						chat_id: chatId,
+						message_id: query.message?.message_id
+					});
+					wizardState.delete(telegramId);
+					return;
+				}
+
+				const user = db.getOrCreateUser(telegramId, query.from.username || null);
+				const existingWatches = db.getWatchesByUserId(user.id);
+
+				if (existingWatches.length >= 10) {
+					await bot.editMessageText('❌ You have reached the maximum of 10 watches. Use /unwatch to remove one first.', {
+						chat_id: chatId,
+						message_id: query.message?.message_id
+					});
+					wizardState.delete(telegramId);
+					return;
+				}
+
+				const watchUrl = buildWatchUrl(state.category, region);
+				const watch = db.createWatch(user.id, watchUrl, null);
+
+				await bot.editMessageText(
+					`✅ *Now watching:*\n${watchUrl}\n\nWatch ID: W${watch.id}\n\nYou'll get alerts when new listings appear!`,
+					{
+						chat_id: chatId,
+						message_id: query.message?.message_id,
+						parse_mode: 'Markdown'
+					}
+				);
+
+				wizardState.delete(telegramId);
+			}
+		} catch (error) {
+			console.error('Error handling callback query:', error);
+		}
+	});
 
 	bot.onText(/\/start/, async (msg) => {
 		const chatId = msg.chat.id;
@@ -23,7 +116,7 @@ export function createBot(): TelegramBot {
 I help you find bargains on Blocket.se with instant alerts.
 
 *Commands:*
-/watch <url> — Watch a Blocket search
+/watch — Interactive wizard or /watch <url> or shortcuts like "/watch fordon skåne"
 /follow <url> — Follow a Blocket seller
 /list — Show your watches and follows
 /unwatch <id> — Stop watching
@@ -32,7 +125,9 @@ I help you find bargains on Blocket.se with instant alerts.
 /pro — View subscription status
 /help — Show this help
 
-*Example:*
+*Examples:*
+\`/watch fordon stockholm\`
+\`/watch\` (interactive buttons)
 \`/watch https://www.blocket.se/annonser/hela_sverige/fordon/bilar\`
 \`/follow https://www.blocket.se/annonsorer/seller-name\`
 
@@ -47,7 +142,9 @@ Start watching now!`,
 		await bot.sendMessage(chatId,
 `*Fyndbot Commands*
 
-/watch <url> — Start watching a Blocket search
+/watch — Interactive wizard with buttons
+/watch <shortcut> — Quick watch (e.g., "fordon skåne", "bilar stockholm")
+/watch <url> — Watch a full Blocket URL
 /follow <url> — Follow a Blocket seller
 /list — List all your active watches and follows
 /unwatch <id> — Stop watching (use ID from /list)
@@ -55,6 +152,11 @@ Start watching now!`,
 /inspect <url> — Deep analysis of a listing
 /pro — View Pro subscription details
 /help — Show this message
+
+*Examples:*
+\`/watch fordon göteborg\` — Cars in Göteborg
+\`/watch elektronik\` — Electronics nationwide
+\`/watch\` — Interactive category/region picker
 
 *Pro Features:*
 • AI bargain scoring on every alert
@@ -72,20 +174,30 @@ Free tier: 3 inspections per week`,
 		const telegramId = msg.from!.id;
 		const username = msg.from!.username || null;
 
-		if (msg.text === '/watch') {
-			await bot.sendMessage(chatId, 'Usage: `/watch <blocket_url>`\n\nExample:\n`/watch https://www.blocket.se/annonser/stockholm/bostad`', { parse_mode: 'Markdown' });
-			return;
-		}
+		const input = match?.[1]?.trim();
 
-		const url = match?.[1]?.trim();
-		
-		if (!url) {
-			await bot.sendMessage(chatId, 'Please provide a Blocket URL.');
-			return;
-		}
+		if (!input) {
+			cleanupExpiredWizards();
+			wizardState.set(telegramId, { timestamp: Date.now() });
 
-		if (!url.includes('blocket.se')) {
-			await bot.sendMessage(chatId, 'Please provide a valid Blocket.se URL.');
+			const categoryButtons = getCategoryButtons();
+			const keyboard = [];
+			for (let i = 0; i < categoryButtons.length; i += 2) {
+				const row = [
+					{ text: categoryButtons[i].text, callback_data: categoryButtons[i].callbackData }
+				];
+				if (categoryButtons[i + 1]) {
+					row.push({ text: categoryButtons[i + 1].text, callback_data: categoryButtons[i + 1].callbackData });
+				}
+				keyboard.push(row);
+			}
+
+			await bot.sendMessage(chatId, '🔍 *Choose a category:*', {
+				parse_mode: 'Markdown',
+				reply_markup: {
+					inline_keyboard: keyboard
+				}
+			});
 			return;
 		}
 
@@ -97,11 +209,23 @@ Free tier: 3 inspections per week`,
 			return;
 		}
 
-		const watch = db.createWatch(user.id, url, null);
+		let watchUrl = input;
+		let resolvedInfo = '';
 
-		await bot.sendMessage(chatId, 
-			`✅ Now watching!\n\nWatch ID: ${watch.id}\n\nYou'll be notified when new listings appear.\n\nUse /list to see all watches.`
-		);
+		if (!input.includes('blocket.se')) {
+			const resolved = parseWatchShortcut(input);
+			if (resolved) {
+				watchUrl = resolved.url;
+				resolvedInfo = ` (resolved from shortcut)`;
+			} else {
+				await bot.sendMessage(chatId, '❌ Could not parse shortcut. Try:\n• `/watch fordon skåne`\n• `/watch bilar stockholm`\n• `/watch` for interactive wizard\n• Full Blocket URL', { parse_mode: 'Markdown' });
+				return;
+			}
+		}
+
+		const watch = db.createWatch(user.id, watchUrl, null);
+
+		await bot.sendMessage(chatId, `✅ Now watching${resolvedInfo}:\n${watchUrl}\n\nWatch ID: W${watch.id}\n\nYou'll get alerts when new listings appear!`);
 	});
 
 	bot.onText(/\/list/, async (msg) => {
@@ -370,7 +494,8 @@ Free tier: 3 inspections per week`,
 
 		if (user.isPro) {
 			await bot.sendMessage(chatId, 
-				`✨ You're a Pro subscriber!\n\n• AI bargain scores on alerts\n• Unlimited inspections\n• Vehicle data enrichment\n\nThank you for your support!`
+				`✨ *You're already Pro!*\n\n• AI bargain scores on alerts\n• Unlimited inspections\n• Vehicle data enrichment\n\nThank you for your support!`,
+				{ parse_mode: 'Markdown' }
 			);
 		} else {
 			try {
@@ -520,5 +645,14 @@ export async function sendFollowDisappearedAlert(bot: TelegramBot, userId: numbe
 		await bot.sendMessage(user.telegramId, message, { parse_mode: 'Markdown' });
 	} catch (error) {
 		console.error('Error sending follow disappeared alert:', error);
+	}
+}
+
+function cleanupExpiredWizards(): void {
+	const now = Date.now();
+	for (const [telegramId, state] of wizardState.entries()) {
+		if (now - state.timestamp > WIZARD_TTL_MS) {
+			wizardState.delete(telegramId);
+		}
 	}
 }

@@ -1,6 +1,7 @@
 import Stripe from 'stripe';
 import { config } from '../config.js';
 import * as db from '../database/index.js';
+import { sendTelegramMessage } from '../notify.js';
 
 let stripe: Stripe | null = null;
 let stripeTest: Stripe | null = null;
@@ -181,6 +182,17 @@ function handleCheckoutCompleted(session: Stripe.Checkout.Session): void {
 	db.setUserPro(telegramId, true, customerId, subscriptionId);
 
 	console.log(`User ${telegramId} upgraded to Pro via checkout ${session.id}`);
+
+	const isTestMode = session.metadata?.stripe_mode === 'test';
+	let message = `✨ *You're Pro!*\n\nAI bargain scores are now active for all your alerts. Try /inspect or wait for the next /watch hit to see it in action!`;
+	
+	if (isTestMode) {
+		message += `\n\n🧪 _Sandbox mode: This is a test subscription._`;
+	}
+
+	sendTelegramMessage(telegramId, message).catch(err => {
+		console.error(`Failed to notify user ${telegramId} about Pro activation:`, err);
+	});
 }
 
 function handleSubscriptionUpdated(subscription: Stripe.Subscription): void {
@@ -192,11 +204,19 @@ function handleSubscriptionUpdated(subscription: Stripe.Subscription): void {
 		return;
 	}
 
+	const wasProBefore = user.isPro;
 	const isActive = subscription.status === 'active' || subscription.status === 'trialing';
 
 	db.setUserPro(user.telegramId, isActive, customerId, subscription.id);
 
 	console.log(`Subscription ${subscription.id} updated: ${subscription.status} (user ${user.telegramId})`);
+
+	if (isActive && !wasProBefore) {
+		const message = `✨ *You're Pro!*\n\nAI bargain scores are now active for all your alerts. Try /inspect or wait for the next /watch hit to see it in action!`;
+		sendTelegramMessage(user.telegramId, message).catch(err => {
+			console.error(`Failed to notify user ${user.telegramId} about Pro activation:`, err);
+		});
+	}
 }
 
 function handleSubscriptionDeleted(subscription: Stripe.Subscription): void {
