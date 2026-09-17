@@ -116,7 +116,7 @@ export function startWebServer(): http.Server {
 		const url = new URL(req.url || '', `http://${req.headers.host}`);
 
 		res.setHeader('Access-Control-Allow-Origin', '*');
-		res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+		res.setHeader('Access-Control-Allow-Methods', 'GET, POST, HEAD, OPTIONS');
 		res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Stripe-Signature');
 
 		if (req.method === 'OPTIONS') {
@@ -156,21 +156,33 @@ export function startWebServer(): http.Server {
 			return;
 		}
 
-		if (url.pathname === '/success' && req.method === 'GET') {
+		if (url.pathname === '/success' && (req.method === 'GET' || req.method === 'HEAD')) {
 			res.writeHead(200, { 'Content-Type': 'text/html' });
-			res.end(SUCCESS_HTML);
+			if (req.method === 'GET') {
+				res.end(SUCCESS_HTML);
+			} else {
+				res.end();
+			}
 			return;
 		}
 
-		if (url.pathname === '/cancel' && req.method === 'GET') {
+		if (url.pathname === '/cancel' && (req.method === 'GET' || req.method === 'HEAD')) {
 			res.writeHead(200, { 'Content-Type': 'text/html' });
-			res.end(CANCEL_HTML);
+			if (req.method === 'GET') {
+				res.end(CANCEL_HTML);
+			} else {
+				res.end();
+			}
 			return;
 		}
 
-		if (url.pathname === '/health' && req.method === 'GET') {
+		if (url.pathname === '/health' && (req.method === 'GET' || req.method === 'HEAD')) {
 			res.writeHead(200, { 'Content-Type': 'application/json' });
-			res.end(JSON.stringify({ status: 'ok' }));
+			if (req.method === 'GET') {
+				res.end(JSON.stringify({ status: 'ok' }));
+			} else {
+				res.end();
+			}
 			return;
 		}
 

@@ -15,6 +15,7 @@ export function initDatabase(): void {
 	db.pragma('journal_mode = WAL');
 	
 	createTables();
+	migrateUsersTable();
 }
 
 function createTables(): void {
@@ -73,7 +74,6 @@ function createTables(): void {
 		);
 
 		CREATE INDEX IF NOT EXISTS idx_users_telegram_id ON users(telegram_id);
-		CREATE INDEX IF NOT EXISTS idx_users_stripe_customer ON users(stripe_customer_id);
 		CREATE INDEX IF NOT EXISTS idx_watches_user_id ON watches(user_id);
 		CREATE INDEX IF NOT EXISTS idx_watches_active ON watches(active);
 		CREATE INDEX IF NOT EXISTS idx_follows_user_id ON follows(user_id);
@@ -82,6 +82,23 @@ function createTables(): void {
 		CREATE INDEX IF NOT EXISTS idx_follow_listings_follow_id ON follow_listings(follow_id);
 		CREATE INDEX IF NOT EXISTS idx_follow_listings_disappeared ON follow_listings(disappeared_at);
 	`);
+}
+
+function migrateUsersTable(): void {
+	const tableInfo = db.prepare('PRAGMA table_info(users)').all() as Array<{ name: string }>;
+	const columnNames = tableInfo.map(col => col.name);
+
+	if (!columnNames.includes('stripe_customer_id')) {
+		console.log('Migrating users table: adding stripe_customer_id column');
+		db.exec('ALTER TABLE users ADD COLUMN stripe_customer_id TEXT');
+	}
+
+	if (!columnNames.includes('stripe_subscription_id')) {
+		console.log('Migrating users table: adding stripe_subscription_id column');
+		db.exec('ALTER TABLE users ADD COLUMN stripe_subscription_id TEXT');
+	}
+
+	db.exec('CREATE INDEX IF NOT EXISTS idx_users_stripe_customer ON users(stripe_customer_id)');
 }
 
 export function getOrCreateUser(telegramId: number, username: string | null): User {
