@@ -3,7 +3,7 @@ import { config } from '../config.js';
 import * as db from '../database/index.js';
 import { fetchBlocketSearch, fetchBlocketAd, extractRegistrationNumber, extractSellerFromUrl } from '../blocket/fetcher.js';
 import { scoreListing } from '../scorer/index.js';
-import { enrichVehicleData } from '../enrichment/transportstyrelsen.js';
+import { enrichVehicleFromBlocket } from '../enrichment/transportstyrelsen.js';
 import { createCheckoutSession } from '../stripe/index.js';
 import { parseWatchShortcut, getCategoryButtons, getRegionButtons, buildWatchUrl } from './watchShortcuts.js';
 import { validateHaWebhookUrl, buildHomeAssistantPayload, notifyHomeAssistant, buildTestPayload } from '../homeassistant.js';
@@ -458,20 +458,18 @@ Free tier: 3 inspections per week`,
 		message += `\n*Bargain Score:* ${score.score}/10\n`;
 		message += `💡 ${score.reason}\n`;
 
-		const regNr = extractRegistrationNumber(listing.title + ' ' + (listing.description || ''));
-		if (regNr) {
-			const vehicleData = await enrichVehicleData(regNr);
-			if (vehicleData) {
-				message += `\n*Vehicle Info (${regNr}):*\n`;
-				if (vehicleData.make && vehicleData.model) {
-					message += `🚗 ${vehicleData.make} ${vehicleData.model} (${vehicleData.year})\n`;
-				}
-				if (vehicleData.monthsUntilInspection !== null) {
-					message += `🔧 Besiktning: ${vehicleData.monthsUntilInspection} months\n`;
-				}
-				if (vehicleData.monthsUntilTax !== null) {
-					message += `💳 Tax: ${vehicleData.monthsUntilTax} months\n`;
-				}
+		const vehicleData = await enrichVehicleFromBlocket(listing.url);
+		if (vehicleData) {
+			const regNr = vehicleData.registrationNumber || 'N/A';
+			message += `\n*Vehicle Info:*\n`;
+			if (vehicleData.make && vehicleData.model) {
+				message += `🚗 ${vehicleData.make} ${vehicleData.model} (${vehicleData.year})\n`;
+			}
+			if (vehicleData.monthsUntilInspection !== null) {
+				message += `🔧 Besiktning: ${vehicleData.monthsUntilInspection} months\n`;
+			}
+			if (regNr !== 'N/A') {
+				message += `🔑 Reg: ${regNr}\n`;
 			}
 		}
 
@@ -655,6 +653,39 @@ export async function sendAlert(bot: TelegramBot, userId: number, listing: Block
 			message += `📍 ${listing.location}\n`;
 		}
 
+		const isMobilityListing = listing.url.includes('/mobility/') || 
+			listing.category?.toLowerCase().includes('fordon') ||
+			listing.category?.toLowerCase().includes('bilar');
+
+		if (isMobilityListing) {
+			const vehicleData = await enrichVehicleFromBlocket(listing.url).catch(err => {
+				console.warn('Vehicle enrichment failed (non-blocking):', err);
+				return null;
+			});
+
+			if (vehicleData) {
+				const parts: string[] = [];
+				
+				if (vehicleData.monthsUntilInspection !== null) {
+					parts.push(`Besiktning: ${vehicleData.monthsUntilInspection} mån kvar`);
+				}
+				
+				if (vehicleData.registrationNumber && vehicleData.registrationNumber !== 'Unknown') {
+					parts.push(vehicleData.registrationNumber);
+				}
+				
+				if (vehicleData.make && vehicleData.model && vehicleData.year) {
+					parts.push(`${vehicleData.make} ${vehicleData.model} ${vehicleData.year}`);
+				} else if (vehicleData.make && vehicleData.model) {
+					parts.push(`${vehicleData.make} ${vehicleData.model}`);
+				}
+
+				if (parts.length > 0) {
+					message += `🚗 ${parts.join(' · ')}\n`;
+				}
+			}
+		}
+
 		if (isPro) {
 			score = await scoreListing(listing);
 			message += `\n⭐ *Bargain Score:* ${score.score}/10\n`;
@@ -698,6 +729,39 @@ export async function sendFollowNewAlert(bot: TelegramBot, userId: number, listi
 		
 		if (listing.location) {
 			message += `📍 ${listing.location}\n`;
+		}
+
+		const isMobilityListing = listing.url.includes('/mobility/') || 
+			listing.category?.toLowerCase().includes('fordon') ||
+			listing.category?.toLowerCase().includes('bilar');
+
+		if (isMobilityListing) {
+			const vehicleData = await enrichVehicleFromBlocket(listing.url).catch(err => {
+				console.warn('Vehicle enrichment failed (non-blocking):', err);
+				return null;
+			});
+
+			if (vehicleData) {
+				const parts: string[] = [];
+				
+				if (vehicleData.monthsUntilInspection !== null) {
+					parts.push(`Besiktning: ${vehicleData.monthsUntilInspection} mån kvar`);
+				}
+				
+				if (vehicleData.registrationNumber && vehicleData.registrationNumber !== 'Unknown') {
+					parts.push(vehicleData.registrationNumber);
+				}
+				
+				if (vehicleData.make && vehicleData.model && vehicleData.year) {
+					parts.push(`${vehicleData.make} ${vehicleData.model} ${vehicleData.year}`);
+				} else if (vehicleData.make && vehicleData.model) {
+					parts.push(`${vehicleData.make} ${vehicleData.model}`);
+				}
+
+				if (parts.length > 0) {
+					message += `🚗 ${parts.join(' · ')}\n`;
+				}
+			}
 		}
 
 		if (isPro) {
