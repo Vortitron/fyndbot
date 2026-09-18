@@ -29,64 +29,53 @@ export async function fetchBlocketSearch(url: string): Promise<BlocketListing[]>
 	}
 }
 
-function parseBlocketHTML(html: string): BlocketListing[] {
+export function parseBlocketHTML(html: string): BlocketListing[] {
 	const listings: BlocketListing[] = [];
 
-	const scriptMatch = html.match(/<script[^>]*id="__NEXT_DATA__"[^>]*>(.*?)<\/script>/s);
-	if (scriptMatch) {
+	const jsonLdMatch = html.match(/<script[^>]*id="seoStructuredData"[^>]*type="application\/ld\+json"[^>]*>(.*?)<\/script>/s);
+	if (jsonLdMatch) {
 		try {
-			const data = JSON.parse(scriptMatch[1]);
-			const searchData = data?.props?.pageProps?.initialData?.data;
+			const data = JSON.parse(jsonLdMatch[1]);
+			const itemList = data?.mainEntity?.itemListElement;
 			
-			if (searchData && Array.isArray(searchData)) {
-				for (const item of searchData) {
-					if (item.type === 'ad') {
-						const ad = item.ad;
+			if (itemList && Array.isArray(itemList)) {
+				for (const listItem of itemList) {
+					const product = listItem.item;
+					if (product && product['@type'] === 'Product') {
+						const urlMatch = product.url?.match(/\/item\/(\d+)/);
+						const id = urlMatch?.[1] || '';
+						
+						const title = product.name || 'Untitled';
+						const price = product.offers?.price ? parseInt(product.offers.price, 10) : null;
+						const currency = product.offers?.priceCurrency || 'SEK';
+						const url = product.url || '';
+						const imageUrl = product.image || null;
+						const description = product.description || null;
+						
 						listings.push({
-							id: ad.ad_id?.toString() || '',
-							title: ad.subject || 'Untitled',
-							price: ad.price?.value || null,
-							currency: ad.price?.currency || 'SEK',
-							url: `${BLOCKET_BASE}${ad.url || ''}`,
-							imageUrl: ad.images?.[0]?.url || null,
-							publishedAt: ad.list_time ? new Date(ad.list_time) : new Date(),
-							location: ad.location?.[0]?.name || null,
-							category: ad.category?.name || null,
-							description: ad.body || null,
+							id,
+							title,
+							price,
+							currency,
+							url,
+							imageUrl,
+							publishedAt: new Date(),
+							location: null,
+							category: null,
+							description,
 						});
 					}
 				}
 			}
 		} catch (err) {
-			console.warn('Failed to parse Blocket JSON:', err);
+			console.warn('Failed to parse Blocket JSON-LD:', err);
 		}
 	}
 
-	const adPattern = /<article[^>]*data-testid="listing-card"[^>]*>(.*?)<\/article>/gs;
-	let match;
-	while ((match = adPattern.exec(html)) !== null) {
-		const card = match[1];
-		
-		const idMatch = card.match(/href="\/annons\/[^\/]+\/(\d+)"/);
-		const titleMatch = card.match(/<h2[^>]*>(.*?)<\/h2>/);
-		const priceMatch = card.match(/(\d[\d\s]*)\s*kr/);
-		const urlMatch = card.match(/href="(\/annons\/[^"]+)"/);
-		const imgMatch = card.match(/<img[^>]*src="([^"]+)"/);
-
-		if (idMatch && titleMatch) {
-			listings.push({
-				id: idMatch[1],
-				title: titleMatch[1].replace(/<[^>]*>/g, '').trim(),
-				price: priceMatch ? parseInt(priceMatch[1].replace(/\s/g, ''), 10) : null,
-				currency: 'SEK',
-				url: `${BLOCKET_BASE}${urlMatch?.[1] || ''}`,
-				imageUrl: imgMatch?.[1] || null,
-				publishedAt: new Date(),
-				location: null,
-				category: null,
-				description: null,
-			});
-		}
+	if (listings.length === 0) {
+		console.error('CRITICAL: Blocket parser returned zero listings from non-empty HTML. HTML length:', html.length);
+		console.error('This likely indicates a parser failure. Please investigate immediately.');
+		throw new Error('Blocket parser failed: zero listings extracted from search page');
 	}
 
 	return listings;
