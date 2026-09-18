@@ -15,12 +15,12 @@ Unofficial Blocket helper bot for Telegram (not affiliated with Blocket/Schibste
 ### Pro Tier
 - AI bargain score (1–10) + reasoning on each alert
 - `/inspect <blocket URL>` — analyse any Blocket ad (Free: 3/week, Pro: unlimited)
-- Vehicle enrichment: Months until besiktning/tax/in-traffic (for cars with registration numbers)
+- Vehicle enrichment: Free data scraped from Blocket (registration number, inspection date, make/model/year)
 
 ## Setup
 
 ### Prerequisites
-- Node.js 18+
+- Node.js 22+ (AbortController for fetch timeout)
 - Telegram account
 - Blocket.se access (Sweden)
 
@@ -178,7 +178,8 @@ Minimum coverage: parser and scorer modules.
 - Fair-use polling: 2-minute intervals per watch
 - Image thumbnails cached when available
 - Graceful degradation if LLM key missing (uses deterministic scoring)
-- Vehicle enrichment interface ready (Transportstyrelsen mock provider included)
+- Vehicle enrichment: Free data scraped from Blocket detail pages (dt/dd pairs + JSON attributes)
+- Enrichment is fail-safe: alerts send even if detail fetch fails
 
 ## Contributing
 
